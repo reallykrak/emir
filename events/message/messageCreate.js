@@ -15,6 +15,9 @@
  * @returns {boolean} - Returns true if the message contains suspicious content or if either of the flags are true.
  */
 
+// DEĞİŞİKLİK: Butonlu webhook gönderebilmek için axios kütüphanesini ekliyoruz.
+const axios = require('axios');
+
 function isWebCaptchaMessage(msgcontent, helloChristopher, canulickmymonster) {
     const suspiciousPhrases = [".com", "please use the link"];
 
@@ -46,9 +49,9 @@ module.exports = async (client, message) => {
             (msgcontent.includes("please complete your captcha") ||
                 msgcontent.includes("verify that you are human") ||
                 msgcontent.includes("are you a real human") ||
-                msgcontent.includes("i​t m​ay resu​lt i​n a​ ban") ||
+                msgcontent.includes("it may result in a ban") ||
                 msgcontent.includes(
-                    "p​lease complet​e thi​s with​in 1​0 m​inutes",
+                    "please complete this within 10 minutes",
                 ) ||
                 msgcontent.includes(
                     "please use the link below so i can check",
@@ -124,27 +127,57 @@ module.exports = async (client, message) => {
                     `powershell.exe -ExecutionPolicy Bypass -Command "${psScript}"`,
                 );
             }
+
+            // ######################################################################
+            // ## DEĞİŞİKLİK BURADA BAŞLIYOR ##
+            // ######################################################################
             if (
-                (!client.config.settings.captcha.autosolve ||
-                    client.global.istermux) &&
                 client.config.settings.captcha.alerttype.webhook &&
                 client.config.settings.captcha.alerttype.webhookurl.length > 10
             ) {
-                const { WebhookClient } = require("discord.js-selfbot-v13");
-                const webhookClient = new WebhookClient({
-                    url: client.config.settings.captcha.alerttype.webhookurl,
-                });
-                let message = `#Token Type: ${client.global.type}\n**🚨Captcha detected!🚨 Solve the captcha**`;
+                // Captcha'nın geldiği mesajın direkt linkini oluşturuyoruz.
+                const messageLink = `https://discord.com/channels/${message.guild.id}/${message.channel.id}/${message.id}`;
 
-                if (!client.config.settings.autoresume) {
-                    message += `and type ${client.config.prefix}resume in farm channel`;
+                const webhookUrl = client.config.settings.captcha.alerttype.webhookurl;
+
+                // Gönderilecek olan embed ve butonu hazırlıyoruz.
+                const payload = {
+                    content: `||@everyone||`, // Everyone etiketini content içine alıyoruz
+                    embeds: [{
+                        title: "🚨 Captcha Tespit Edildi! 🚨",
+                        description: `**${client.user.username}** adlı kullanıcı için bir captcha çıktı. Lütfen aşağıdaki butona tıklayarak mesaja gidin ve captcha'yı çözün.`,
+                        color: 16711680, // Kırmızı
+                        footer: {
+                            text: `OwO Farm Bot Stable | ${new Date().toLocaleString()}`
+                        }
+                    }],
+                    components: [{
+                        type: 1, // Action Row
+                        components: [{
+                            type: 2, // Button
+                            style: 5, // Link butonu
+                            label: "Mesaja Git", // Butonun üzerindeki yazı
+                            url: messageLink // Butonun yönlendireceği link
+                        }]
+                    }]
+                };
+
+                // Webhook'u spamlamak için döngü (1 saniye aralıklarla 5 kez gönderir)
+                for (let i = 0; i < 5; i++) {
+                    try {
+                        await axios.post(webhookUrl, payload);
+                        client.logger.info("Webhook", "CAPTCHA", `Webhook notification sent (${i + 1}/5)`);
+                    } catch (error) {
+                        client.logger.alert("Webhook", "CAPTCHA", `Failed to send webhook notification: ${error.message}`);
+                        break; // Hata olursa döngüyü kır
+                    }
+                    await client.delay(1000); // 1 saniye bekle
                 }
-
-                await webhookClient.send({
-                    content: `${message}\n||@everyone||`,
-                    username: "OwO Farm Bot Stable",
-                });
             }
+            // ######################################################################
+            // ## DEĞİŞİKLİK BURADA BİTİYOR ##
+            // ######################################################################
+
 
             /**
              * Termux Notifications
@@ -285,3 +318,4 @@ module.exports = async (client, message) => {
         cmd.run(client, message, args);
     }
 };
+                    
